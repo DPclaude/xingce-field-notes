@@ -57,6 +57,7 @@ export default function Editor({ id }: { id: string }) {
   }, [saved, q]);
   if (!q) return <Spinner />;
   const update = (patch: Partial<Question>) => {
+    t.setMessage("");
     const next = { ...q, ...patch };
     setQ(editedQuestion(next));
     setTextChecked(false);
@@ -89,6 +90,16 @@ export default function Editor({ id }: { id: string }) {
     const fresh = await db.questions.get(id);
     if (fresh) setQ(fresh);
   };
+  const needsImagesCheck = q.regions.length > 0 || !!q.materialId;
+  const remainingChecks = [
+    ...(saved?.status === "分析中" ? ["识别或分析尚未结束，请等待完成；中断后请返回题目查看状态。"] : []),
+    ...(saving ? ["编辑内容正在保存，请稍候。"] : []),
+    ...(saveError ? ["本次编辑未保存成功，请先保留当前文字并处理保存错误。"] : []),
+    ...(!q.stem.trim() ? ["题干为空：请先点“识别题目”，或手动填写完整题干。"] : []),
+    ...q.issues.map((issue) => `待解决：${issue || "请检查待解决问题栏"}。请补充或更正条件，确认解决后删除对应行。`),
+    ...(!textChecked ? ["请勾选“已核对题干、选项、单位和否定词”。"] : []),
+    ...(needsImagesCheck && !imagesChecked ? ["请检查题图与共享材料，再勾选“没有露出参考答案、机构解析”。"] : []),
+  ];
   return (
     <>
       <PageTitle
@@ -478,35 +489,38 @@ export default function Editor({ id }: { id: string }) {
             <input
               type="checkbox"
               checked={textChecked}
-              onChange={(e) => setTextChecked(e.target.checked)}
+              onChange={(e) => { setTextChecked(e.target.checked); t.setMessage(""); }}
             />
             已核对题干、选项、单位和否定词，缺失条件已补齐
           </label>
-          <label className="check">
+          {needsImagesCheck && <label className="check">
             <input
               type="checkbox"
               checked={imagesChecked}
-              onChange={(e) => setImagesChecked(e.target.checked)}
+              onChange={(e) => { setImagesChecked(e.target.checked); t.setMessage(""); }}
             />
             解题图片和共享材料没有露出参考答案、机构解析
-          </label>
+          </label>}
+          {remainingChecks.length > 0 ? (
+            <div role="status" aria-live="polite">
+              <strong>还差以下核对事项</strong>
+              <ul>{remainingChecks.map((message, i) => <li key={i}>{message}</li>)}</ul>
+              <p className="micro">修改题目后需要重新勾选核对。不能确定的内容请保留待核对，不要直接删除疑问来通过。</p>
+            </div>
+          ) : <p role="status">核对事项已完成，可以保存并进入解题。</p>}
           <button
             className="primary full"
-            disabled={
-              t.busy ||
-              saving ||
-              saveError ||
-              !textChecked ||
-              ((q.regions.length > 0 || !!q.materialId) && !imagesChecked) ||
-              q.issues.length > 0 ||
-              !q.stem.trim()
-            }
+            disabled={t.busy || saving}
             onClick={() =>
               t.run(async () => {
+                if (remainingChecks.length) {
+                  t.setMessage("尚未完成核对：" + remainingChecks.join(" "));
+                  return;
+                }
                 await confirmQuestion(
                   q.id,
                   q.revision,
-                  imagesChecked || !q.regions.length,
+                  imagesChecked || !needsImagesCheck,
                 );
                 go(`question/${q.id}`);
               })
