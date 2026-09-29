@@ -1,0 +1,37 @@
+{
+  "name": "xingce-field-notes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build && node scripts/build-sw.mjs",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "dexie": "^4.0.11",
+    "dexie-react-hooks": "^1.1.7",
+    "zod": "^3.24.2",
+    "fflate": "^0.8.2",
+    "katex": "^0.16.22",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
+    "rehype-katex": "^7.0.1",
+    "lucide-react": "^0.468.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/node": "^22.15.0",
+    "typescript": "~5.8.3",
+    "vite": "^6.3.5",
+    "@vitejs/plugin-react": "^4.4.1",
+    "vitest": "^3.2.0",
+    "fake-indexeddb": "^6.0.0",
+    "@playwright/test": "^1.51.1"
+  }
+}

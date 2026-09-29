@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.env*
+!.env.example
+*.zip
+*.log
+test-results/
+playwright-report/
+.local/
+backups/
+uploads/
+*.har
+*.trace
+.superpowers/
