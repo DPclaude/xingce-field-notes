@@ -4,10 +4,21 @@ import type { Settings, Usage } from "./domain";
 let sessionKey = "";
 let sessionOrigin = "";
 export async function setKey(key: string, baseUrl: string, remember: boolean) {
+  key = key.trim();
+  if (remember && key) await db.credentials.put({ id: "api", key, baseUrl });
+  else await db.credentials.delete("api");
   sessionKey = key;
   sessionOrigin = baseUrl;
-  await db.credentials.delete("api");
-  if (remember && key) await db.credentials.put({ id: "api", key, baseUrl });
+}
+export type KeyStatus = "none" | "session" | "device";
+export async function keyStatus(baseUrl: string): Promise<KeyStatus> {
+  const row = await db.credentials.get("api");
+  if (row?.baseUrl === baseUrl && row.key) return "device";
+  return sessionOrigin === baseUrl && sessionKey ? "session" : "none";
+}
+export async function saveApiKey(value: string, baseUrl: string, remember: boolean) {
+  const key = value.trim() || await getKey(baseUrl);
+  if (key) await setKey(key, baseUrl, remember);
 }
 export async function hasKey(baseUrl: string) {
   return !!(await getKey(baseUrl));
