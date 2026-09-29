@@ -15,7 +15,7 @@ import {
   defaultSettings,
   type Settings as Config,
 } from "../domain";
-import { setKey, hasKey, callModel } from "../api";
+import { setKey, saveApiKey, keyStatus, type KeyStatus, callModel } from "../api";
 import { dataUrl } from "../images";
 import { exportBackup, importBackup } from "../backup";
 import { cleanupPreview, cleanupOriginals } from "../storage";
@@ -24,7 +24,8 @@ export default function Settings() {
   const [s, setS] = useState<Config>(defaultSettings),
     [key, setKeyValue] = useState(""),
     [remember, setRemember] = useState(false),
-    [keyExists, setKeyExists] = useState(false),
+    [savedKey, setSavedKey] = useState<KeyStatus>("none"),
+    [loaded, setLoaded] = useState(false),
     [usage, setUsage] = useState<{ usage?: number; quota?: number }>({}),
     [preview, setPreview] = useState<{ count: number; bytes: number }>();
   const [pendingImport, setPendingImport] = useState<File>();
@@ -42,13 +43,24 @@ export default function Settings() {
   useEffect(() => {
     getSettings().then((v) => {
       setS(v);
-      hasKey(v.baseUrl).then(setKeyExists);
+      setLoaded(true);
     });
     navigator.storage?.estimate().then(setUsage);
   }, []);
+  useEffect(() => {
+    let active = true;
+    if (loaded) keyStatus(s.baseUrl).then((status) => {
+      if (active) {
+        setSavedKey(status);
+        setRemember(status === "device");
+      }
+    });
+    return () => { active = false; };
+  }, [loaded, s.baseUrl]);
   const field = <K extends keyof Config>(name: K, value: Config[K]) =>
     setS({ ...s, [name]: value });
   const save = async () => {
+    if (!loaded) throw new Error("设置还在加载，请稍候再保存");
     const checked = settingsSchema.parse(s);
     if (checked.presets.some((p) => p.reserve >= p.minutes))
       throw new Error("预留时间须小于总时长");
@@ -62,12 +74,16 @@ export default function Settings() {
     )
       throw new Error("请输入不含凭据和查询参数的 HTTPS API 地址");
     await db.preferences.put({ id: "settings", value: checked });
-    if (key) {
-      await setKey(key, s.baseUrl, remember);
-      setKeyValue("");
-      setKeyExists(true);
-    }
+    await saveApiKey(key, s.baseUrl, remember);
+    setKeyValue("");
+    const status = await keyStatus(s.baseUrl);
+    setSavedKey(status);
     window.dispatchEvent(new Event("settings-changed"));
+    return status === "device"
+      ? "设置已保存，密钥已记在本机。输入框留空即可，无需重复粘贴。"
+      : status === "session"
+        ? "设置已保存，密钥在当前页面有效。刷新或重新打开前，请勾选记住密钥并再次保存。"
+        : "设置已保存，但当前 API 地址尚未填写密钥。";
   };
   const month = requests.filter(
     (u) =>
@@ -117,8 +133,7 @@ export default function Settings() {
       <Section title="模型与连接">
         <div className="form-card">
           <Notice>
-            当前默认：LeaderAI 的
-            g6a-promotion4。按你的要求先按接口可用设计；跨域、视觉识别和模型准确性尚未真实验证。
+            手机和电脑分别保存连接设置。保存密钥不等于连接测试通过，请用下方按钮验证。
           </Notice>
           <label>
             API 地址
@@ -139,13 +154,16 @@ export default function Settings() {
           </label>
           <label>
             API Key{" "}
-            <small>{keyExists ? "当前地址已有可用的本地密钥" : "未填写"}</small>
+            <small>{savedKey === "device" ? "已记在本机" : savedKey === "session" ? "已保存，仅当前页面有效" : "当前地址未保存密钥"}</small>
             <input
               type="password"
               autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
               value={key}
               onChange={(e) => setKeyValue(e.target.value)}
-              placeholder="只在这里填写，不放进聊天或代码"
+              placeholder={savedKey === "none" ? "粘贴 API Key" : "•••••••• 已保存；仅更换时填写"}
             />
           </label>
           <label className="check">
@@ -154,10 +172,10 @@ export default function Settings() {
               checked={remember}
               onChange={(e) => setRemember(e.target.checked)}
             />
-            在此设备记住新输入的密钥
+            在此设备记住密钥（重新打开仍可使用）
           </label>
           <p className="micro">
-            默认仅当前页面会话保存，刷新后可能需重填。记住密钥不是绝对安全的保险箱；本站脚本能访问它。密钥不包含在备份中。
+            保存后输入框会清空以隐藏密钥，并非删除。默认仅当前页面有效；勾选记住并保存后，重新打开可继续使用。记住密钥不是绝对安全的保险箱；本站脚本能访问它。密钥不包含在备份中。
           </p>
           <div className="button-row">
             <button
@@ -165,8 +183,7 @@ export default function Settings() {
               disabled={t.busy}
               onClick={() =>
                 t.run(async () => {
-                  await save();
-                  t.setMessage("设置已保存。");
+                  t.setMessage(await save());
                 })
               }
             >
@@ -180,7 +197,8 @@ export default function Settings() {
                 t.run(async () => {
                   await setKey("", s.baseUrl, false);
                   setKeyValue("");
-                  setKeyExists(false);
+                  setSavedKey("none");
+                  setRemember(false);
                   t.setMessage("本地密钥已清除。");
                 })
               }
@@ -304,9 +322,7 @@ export default function Settings() {
             我已核对价格口径，启用费用估算
           </label>
           <p className="micro">
-            平台页面只确认了输入 725 积分/百万 token
-            起，尚无完整输出价格。若填写的是折后实际价，请把倍率设为
-            1，避免重复折扣。缓存、图片和思考 token 按平台规则计费。
+            请按当前 API 平台的价格填写。若填写的是实际单价，请把倍率设为 1，避免重复折扣。缓存、图片和思考 token 按平台规则计费。
           </p>
           <details>
             <summary>最近调用记录</summary>
@@ -392,8 +408,7 @@ export default function Settings() {
             className="primary"
             onClick={() =>
               t.run(async () => {
-                await save();
-                t.setMessage("设置已保存");
+                t.setMessage(await save());
               })
             }
           >
