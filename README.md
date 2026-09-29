@@ -1,5 +1,7 @@
 # 知行 · 行测考场思维错题本
 
+[手机访问入口](https://dpclaude.github.io/xingce-field-notes/) · [手机快速开始](docs/手机快速开始.md)
+
 个人使用、手机优先的行测 PWA。题库和图片保存在本机 IndexedDB；静态部署到 GitHub Pages，无后端服务。开发版本 0.1。
 
 ## 运行
@@ -25,7 +27,7 @@ pnpm preview
 
 使用相对资源路径及 hash 路由，支持 `用户名.github.io/仓库名/` 子路径。首次打开需联网缓存全部页面和公式字体。应用更新不会删除 IndexedDB；新版本就绪后提示保存并更新。
 
-**目前没有连接你的 GitHub 账户或发布公开网址。** 源码和发布配置已准备；账户连接/创建远程仓库需要后续完成。
+**已发布：** [打开知行错题本](https://dpclaude.github.io/xingce-field-notes/)。2026-09-29 首次 GitHub Actions 测试、构建和部署成功，正式网址已在浏览器打开验证。实体 iPhone 和真实模型接口仍待验收。
 
 ## 首次设置
 
