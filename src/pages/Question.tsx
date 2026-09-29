@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { db } from "../db";
 import { observedTiming } from "../core";
-import { analyze } from "../workflow";
+import { analyze, processQuestion } from "../workflow";
 import { cancelRequest } from "../api";
 import type { Question as Q } from "../domain";
 import {
@@ -44,7 +44,7 @@ export function AnalysisView({ q }: { q: Q }) {
       </div>
       {q.status !== "已完成" && (
         <Notice tone="error">
-          结论仍待核对，不作为确定答案，也不会形成正式知识归纳。
+          系统发现尚未解决的问题，暂不作为确定答案，也不会形成正式知识归纳。
         </Notice>
       )}
       <div className="decision">
@@ -160,7 +160,7 @@ export default function Question({ id }: { id: string }) {
           onClick={() => go(`edit/${id}`)}
         >
           <PenLine size={17} />
-          核对 / 编辑
+          补充或更正
         </button>
       </div>
       {q.source === "自编演示" && (
@@ -196,22 +196,14 @@ export default function Question({ id }: { id: string }) {
           <ImageView key={i} region={r} />
         ))}
       </div>
-      {!q.analysis &&
-        q.status !== "分析中" &&
-        (q.confirmed ? (
-          <button
-            className="primary full"
-            disabled={t.busy}
-            onClick={() => t.run(() => analyze(id))}
-          >
-            <Play size={18} />
-            生成考场解析 · 联网调用
+      {!q.analysis && q.status !== "分析中" && (
+        <>
+          <button className="primary full" disabled={t.busy} onClick={() => t.run(() => processQuestion(id))}>
+            <Play size={18} />{t.busy ? "正在自动处理…" : q.confirmed ? "继续生成解析" : "自动识别并解析"}
           </button>
-        ) : (
-          <button className="primary full" onClick={() => go(`edit/${id}`)}>
-            先核对题目 <ArrowRight size={18} />
-          </button>
-        ))}
+          <p className="micro">自动检查完整性并求解，无需逐项勾选。联网处理可能计费；缺少条件时会说明需要补哪一处。</p>
+        </>
+      )}
       {q.status === "分析中" && (
         <Notice>
           <Spinner />

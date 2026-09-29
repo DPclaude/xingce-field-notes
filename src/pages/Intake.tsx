@@ -39,7 +39,7 @@ export default function Intake() {
         back="today"
         eyebrow="先记录，再想明白"
         title="录入一道题"
-        description="图片先存进本机。只有你点击识别或分析，才会调用模型。"
+        description="图片先存进本机，再点一次“自动识别并解析”。系统负责核对与求解。"
       />
       <input
         hidden
@@ -86,7 +86,7 @@ export default function Intake() {
       {t.busy && <Spinner />}
       {t.message && <Notice tone="error">{t.message}</Notice>}
       <Notice>
-        截图带答案时，识别后请调整题图边界，排除答案和机构解析。图形推理必须保留必要的图形。
+        系统会尝试分离截图中的答案与解析，自动关联材料和小题。请拍全题目与必要图形；只有无法识别或缺失时才需补充。
       </Notice>
     </>
   );

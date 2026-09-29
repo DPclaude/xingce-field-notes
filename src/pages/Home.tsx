@@ -82,7 +82,7 @@ export default function Home() {
             <Camera />
           </span>
           <strong>拍照录入</strong>
-          <small>先存草稿，再慢慢核对</small>
+          <small>先存草稿，一键自动识别解析</small>
           <Plus size={18} className="corner" />
         </button>
         <button className="quick-card" onClick={() => go("questions?pending")}>

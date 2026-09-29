@@ -6,13 +6,11 @@ import {
   Trash2,
   Plus,
   ScanLine,
-  Check,
-  Images,
 } from "lucide-react";
-import { db, invalidateQuestion, editedQuestion, confirmQuestion } from "../db";
+import { db, invalidateQuestion, editedQuestion } from "../db";
 import { type Question, type Region, taxonomy, normalize } from "../domain";
 import { saveImage } from "../images";
-import { recognize } from "../workflow";
+import { processQuestion } from "../workflow";
 import {
   go,
   PageTitle,
@@ -28,9 +26,7 @@ export default function Editor({ id }: { id: string }) {
   const all = useLiveQuery(() => db.questions.toArray(), []) ?? [];
   const [q, setQ] = useState<Question>();
   const [original, setOriginal] = useState(false),
-    [split, setSplit] = useState(false),
-    [textChecked, setTextChecked] = useState(false),
-    [imagesChecked, setImagesChecked] = useState(false);
+    [split, setSplit] = useState(true);
   const [matText, setMatText] = useState(""),
     [matTitle, setMatTitle] = useState("");
   const input = useRef<HTMLInputElement>(null);
@@ -51,8 +47,6 @@ export default function Editor({ id }: { id: string }) {
   useEffect(() => {
     if (saved && !q) {
       setQ(saved);
-      setTextChecked(saved.confirmed);
-      setImagesChecked(saved.imagesSafe);
     }
   }, [saved, q]);
   if (!q) return <Spinner />;
@@ -60,8 +54,6 @@ export default function Editor({ id }: { id: string }) {
     t.setMessage("");
     const next = { ...q, ...patch };
     setQ(editedQuestion(next));
-    setTextChecked(false);
-    setImagesChecked(false);
     pending.current++;
     setSaving(true);
     void invalidateQuestion(next)
@@ -86,27 +78,25 @@ export default function Editor({ id }: { id: string }) {
           (o) => o.id !== q.id && normalize(o.stem) === normalize(q.stem),
         )
       : [];
-  const reload = async () => {
-    const fresh = await db.questions.get(id);
-    if (fresh) setQ(fresh);
-  };
-  const needsImagesCheck = q.regions.length > 0 || !!q.materialId;
-  const remainingChecks = [
-    ...(saved?.status === "分析中" ? ["识别或分析尚未结束，请等待完成；中断后请返回题目查看状态。"] : []),
-    ...(saving ? ["编辑内容正在保存，请稍候。"] : []),
-    ...(saveError ? ["本次编辑未保存成功，请先保留当前文字并处理保存错误。"] : []),
-    ...(!q.stem.trim() ? ["题干为空：请先点“识别题目”，或手动填写完整题干。"] : []),
-    ...q.issues.map((issue) => `待解决：${issue || "请检查待解决问题栏"}。请补充或更正条件，确认解决后删除对应行。`),
-    ...(!textChecked ? ["请勾选“已核对题干、选项、单位和否定词”。"] : []),
-    ...(needsImagesCheck && !imagesChecked ? ["请检查题图与共享材料，再勾选“没有露出参考答案、机构解析”。"] : []),
-  ];
+  const automatic = () => t.run(async () => {
+    if (saving || pending.current) throw new Error("正在保存刚才的修改，请稍候");
+    if (saveError) throw new Error("编辑保存失败，请先保留文字并处理保存错误");
+    try {
+      await processQuestion(q.id, split);
+    } catch (error) {
+      const latest = await db.questions.get(q.id);
+      if (latest) setQ(latest);
+      throw error;
+    }
+    go(`question/${q.id}`);
+  });
   return (
     <>
       <PageTitle
         back={`question/${id}`}
-        eyebrow="对照原图，把条件核对清楚"
-        title="识题与核对"
-        description="编辑内容自动保存在本机。核对完成后，再交给模型求解。"
+        eyebrow="核对交给系统，重点看懂方法"
+        title="录入与解析"
+        description="草稿已在本机保存。点一次，自动识别、检查条件并生成考场解析。"
       />
       <p className="micro" role="status">
         {saveError
@@ -131,6 +121,18 @@ export default function Editor({ id }: { id: string }) {
           可先查看已保存解析，避免重复花费。
         </Notice>
       )}
+      <div className="form-card">
+        {q.issues.length > 0 && <Notice>需要补充：{q.issues[0]}。可在下方补图或更正，系统会重新检查。</Notice>}
+        {q.regions.map((r, i) => <ImageView key={i} region={r} />)}
+        {!q.regions.length && q.stem && <p>{q.stem}</p>}
+        <button className="primary full" disabled={t.busy || saving || saved?.status === "分析中"} onClick={automatic}>
+          <ScanLine size={18} />
+          {t.busy ? "正在识别、检查与解析…" : q.analysis ? "查看已有解析" : "自动识别并解析"}
+        </button>
+        <p className="micro">联网处理可能计费，通常一次识题、一次求解；多题逐题求解。已完成结果直接复用。请保持页面打开。</p>
+      </div>
+      <details className="accordion" open={!q.regions.length}>
+        <summary>补充或更正 · 加图、改文字、调整边界</summary>
       <fieldset
         className="editor-fields"
         disabled={t.busy || saved?.status === "分析中"}
@@ -294,35 +296,8 @@ export default function Editor({ id }: { id: string }) {
                   checked={split}
                   onChange={(e) => setSplit(e.target.checked)}
                 />
-                一图多题：自动识别并拆分（完成后可纠正边界）
+                自动拆分独立小题（多图连续内容会合成一道题）
               </label>
-              <button
-                className="primary full"
-                disabled={
-                  t.busy || saving || saveError || saved?.status === "分析中"
-                }
-                onClick={() =>
-                  t.run(async () => {
-                    if (
-                      q.stem &&
-                      !confirm(
-                        "重新识别将替换当前识别文字，原解析保留为历史版本。会产生一次新的模型调用，继续吗？",
-                      )
-                    )
-                      return;
-                    await recognize(q.id, split);
-                    await reload();
-                    setTextChecked(false);
-                    setImagesChecked(false);
-                  })
-                }
-              >
-                <ScanLine size={18} />
-                {t.busy ? "正在识别…" : "识别题目 · 联网调用"}
-              </button>
-              <p className="micro">
-                识别与求解分两次显式操作。锁屏可能中断，不会自动重发。
-              </p>
             </>
           )}
         </Section>
@@ -363,7 +338,7 @@ export default function Editor({ id }: { id: string }) {
             </select>
           </label>
           <label>
-            待解决问题（解决后可删除对应行）
+            待解决问题（补充后由系统重新检查）
             <textarea
               rows={2}
               value={q.issues.join("\n")}
@@ -484,53 +459,11 @@ export default function Editor({ id }: { id: string }) {
             </label>
           </div>
         </details>
-        <div className="form-card">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={textChecked}
-              onChange={(e) => { setTextChecked(e.target.checked); t.setMessage(""); }}
-            />
-            已核对题干、选项、单位和否定词，缺失条件已补齐
-          </label>
-          {needsImagesCheck && <label className="check">
-            <input
-              type="checkbox"
-              checked={imagesChecked}
-              onChange={(e) => { setImagesChecked(e.target.checked); t.setMessage(""); }}
-            />
-            解题图片和共享材料没有露出参考答案、机构解析
-          </label>}
-          {remainingChecks.length > 0 ? (
-            <div role="status" aria-live="polite">
-              <strong>还差以下核对事项</strong>
-              <ul>{remainingChecks.map((message, i) => <li key={i}>{message}</li>)}</ul>
-              <p className="micro">修改题目后需要重新勾选核对。不能确定的内容请保留待核对，不要直接删除疑问来通过。</p>
-            </div>
-          ) : <p role="status">核对事项已完成，可以保存并进入解题。</p>}
-          <button
-            className="primary full"
-            disabled={t.busy || saving}
-            onClick={() =>
-              t.run(async () => {
-                if (remainingChecks.length) {
-                  t.setMessage("尚未完成核对：" + remainingChecks.join(" "));
-                  return;
-                }
-                await confirmQuestion(
-                  q.id,
-                  q.revision,
-                  imagesChecked || !needsImagesCheck,
-                );
-                go(`question/${q.id}`);
-              })
-            }
-          >
-            <Check size={18} />
-            核对完成
-          </button>
-        </div>
+        <button className="primary full" disabled={t.busy || saving || saved?.status === "分析中"} onClick={automatic}>
+          <ScanLine size={18} />保存更正并自动解析
+        </button>
       </fieldset>
+      </details>
       {t.busy && <Spinner />}
       {t.message && <Notice tone="error">{t.message}</Notice>}
     </>
