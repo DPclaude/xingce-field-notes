@@ -202,11 +202,11 @@ export const settingsSchema = z.object({
 });
 export type Settings = z.infer<typeof settingsSchema>;
 export const defaultSettings: Settings = {
-  baseUrl: "https://www.leaderai.top/v1",
-  model: "g6a-promotion4",
-  inputPrice: 0,
-  outputPrice: 0,
-  multiplier: 0.5,
+  baseUrl: "https://api.xiaomimimo.com/v1",
+  model: "mimo-v2.6-pro",
+  inputPrice: 3,
+  outputPrice: 6,
+  multiplier: 1,
   currency: "元",
   budget: 50,
   pricesConfirmed: false,
